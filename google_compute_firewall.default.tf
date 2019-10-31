@@ -7,5 +7,5 @@ resource google_compute_firewall default {
     ports    = ["80"]
   }
 
-  source_tags = ["http-server"]
+  source_tags = var.source_tags
 }

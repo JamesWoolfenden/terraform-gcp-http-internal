@@ -10,3 +10,7 @@ variable project {
 variable network {
   type = string
 }
+
+variable source_tags {
+  type = list
+}
