@@ -1,16 +1,16 @@
-variable common_tags {
+variable "common_tags" {
   description = "This is to help you add tags to your cloud objects"
   type        = map
 }
 
-variable project {
+variable "project" {
   type = string
 }
 
-variable network {
+variable "network" {
   type = string
 }
 
-variable source_tags {
+variable "source_tags" {
   type = list
 }
