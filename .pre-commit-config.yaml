@@ -22,9 +22,6 @@ repos:
       - id: terraform_fmt
   - repo: git://github.com/pre-commit/pre-commit-hooks
     rev: v3.2.0
-    stages:
-      - commit
-      - push
     hooks:
       - id: detect-private-key
   - repo: git://github.com/detailyang/pre-commit-shell
