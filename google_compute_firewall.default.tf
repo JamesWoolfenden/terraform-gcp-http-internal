@@ -1,11 +1,10 @@
-resource google_compute_firewall default {
+resource "google_compute_firewall" "default" {
   name    = "default-allow-http"
-  network = data.google_compute_network.default.name
+  network = var.network.name
 
   allow {
     protocol = "tcp"
     ports    = ["80"]
   }
 
-  source_tags = var.source_tags
 }

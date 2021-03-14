@@ -20,7 +20,7 @@ resource "google_compute_instance_template" "us-east1-template" {
   labels = {}
 
   network_interface {
-    network    = data.google_compute_network.default.name
+    network    = var.network.name
     subnetwork = "https://www.googleapis.com/compute/v1/projects/${var.project}/regions/us-east1/subnetworks/default"
     access_config {
       network_tier = "PREMIUM"
@@ -41,5 +41,4 @@ resource "google_compute_instance_template" "us-east1-template" {
     "https://www.googleapis.com/auth/trace.append", ]
   }
 
-  tags = var.source_tags
 }

@@ -16,23 +16,30 @@ No requirements.
 |------|---------|
 | google | n/a |
 
+## Modules
+
+No Modules.
+
+## Resources
+
+| Name |
+|------|
+| [google_compute_firewall](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_firewall) |
+| [google_compute_image](https://registry.terraform.io/providers/hashicorp/google/latest/docs/data-sources/compute_image) |
+| [google_compute_instance_template](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance_template) |
+| [google_compute_region_instance_group_manager](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_region_instance_group_manager) |
+
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| common\_tags | This is to help you add tags to your cloud objects | `map` | n/a | yes |
-| network | n/a | `string` | n/a | yes |
+| common\_tags | This is to help you add tags to your cloud objects | `map(any)` | n/a | yes |
+| network | n/a | `any` | n/a | yes |
 | project | n/a | `string` | n/a | yes |
-| source\_tags | n/a | `list` | n/a | yes |
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| description | n/a |
-| gateway\_ipv4 | n/a |
-| self\_link | n/a |
-
+No output.
 <!-- END OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
 
 ## Related Projects

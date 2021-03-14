@@ -17,10 +17,10 @@ resource "google_compute_instance_template" "europe-west1-template" {
     disk_size_gb = 10
   }
 
-  labels = {}
+  labels = var.common_tags
 
   network_interface {
-    network    = data.google_compute_network.default.name
+    network    = var.network.name
     subnetwork = "https://www.googleapis.com/compute/v1/projects/${var.project}/regions/europe-west1/subnetworks/default"
     access_config {
       network_tier = "PREMIUM"
@@ -40,6 +40,4 @@ resource "google_compute_instance_template" "europe-west1-template" {
       "https://www.googleapis.com/auth/servicecontrol",
     "https://www.googleapis.com/auth/trace.append", ]
   }
-
-  tags = var.source_tags
 }

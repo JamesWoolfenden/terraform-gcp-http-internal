@@ -2,6 +2,5 @@ module "httpinternal" {
   source      = "../../"
   common_tags = var.common_tags
   project     = "examplea"
-  network     = ""
-  source_tags = [""]
+  network     = data.google_compute_network.default
 }
