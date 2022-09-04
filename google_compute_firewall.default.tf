@@ -7,4 +7,5 @@ resource "google_compute_firewall" "default" {
     ports    = ["80"]
   }
 
+  source_ranges = var.source_ranges
 }

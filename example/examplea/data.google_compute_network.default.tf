@@ -1,3 +1,4 @@
 data "google_compute_network" "default" {
-  name = "default"
+  name    = "default"
+  project = "pike-361314"
 }
