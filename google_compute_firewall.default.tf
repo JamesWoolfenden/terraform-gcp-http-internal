@@ -1,4 +1,5 @@
 resource "google_compute_firewall" "default" {
+  #checkov:skip=CKV_GCP_106:bydesign
   name    = "default-allow-http"
   network = var.network.name
 

@@ -1,6 +1,6 @@
 # HTTP Load Balancer with Cloud Armour
 
-[![Build Status](https://github.com/JamesWoolfenden/terraform-gcp-http-internal/workflows/Verify/badge.svg?branch=master)](https://travis-ci.com/JamesWoolfenden/terraform-gcp-http-internal)
+[![Build Status](https://github.com/JamesWoolfenden/terraform-gcp-http-internal/workflows/Verify/badge.svg?branch=master)](https://github.com/JamesWoolfenden/terraform-gcp-http-internal)
 [![Latest Release](https://img.shields.io/github/release/JamesWoolfenden/terraform-gcp-http-internal.svg)](https://github.com/JamesWoolfenden/terraform-gcp-http-internal/releases/latest)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 [![checkov](https://img.shields.io/badge/checkov-verified-brightgreen)](https://www.checkov.io/)
@@ -51,20 +51,25 @@ No outputs.
 The Terraform resource required is:
 
 ```golang
-resource "google_project_iam_custom_role" "terraformXVlBzgba" {
-  project     = "examplea"
+
+resource "google_project_iam_custom_role" "terraform_pike" {
+  project     = "pike"
   role_id     = "terraform_pike"
-  title       = "terraformXVlBzgba"
+  title       = "terraform_pike"
   description = "A user with least privileges"
   permissions = [
     "compute.firewalls.create",
     "compute.firewalls.delete",
     "compute.firewalls.get",
     "compute.firewalls.update",
+    "compute.instanceTemplates.create",
+    "compute.instanceTemplates.delete",
+    "compute.instanceTemplates.get",
     "compute.networks.get",
     "compute.networks.updatePolicy"
   ]
 }
+
 
 ```
 <!-- END OF PRE-COMMIT-PIKE DOCS HOOK -->

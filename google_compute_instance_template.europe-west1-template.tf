@@ -1,4 +1,5 @@
 resource "google_compute_instance_template" "europe-west1-template" {
+  #checkov:skip=CKV_GCP_30:Example
   name = "europe-west1-template"
 
   machine_type   = "n1-standard-1"
@@ -22,13 +23,15 @@ resource "google_compute_instance_template" "europe-west1-template" {
   network_interface {
     network    = var.network.name
     subnetwork = "https://www.googleapis.com/compute/v1/projects/${var.project}/regions/europe-west1/subnetworks/default"
-    access_config {
-      network_tier = "PREMIUM"
-    }
   }
 
   metadata = {
-    startup-script-url = "gs://cloud-training/gcpnet/httplb/startup.sh"
+    startup-script-url     = "gs://cloud-training/gcpnet/httplb/startup.sh"
+    block-project-ssh-keys = true
+  }
+
+  shielded_instance_config {
+    enable_integrity_monitoring = true
   }
 
   service_account {
