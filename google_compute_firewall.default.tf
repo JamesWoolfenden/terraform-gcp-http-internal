@@ -1,12 +1,18 @@
 resource "google_compute_firewall" "default" {
-  #checkov:skip=CKV_GCP_106:bydesign
   name    = "default-allow-http"
-  network = var.network.name
+  network = var.network
 
-  allow {
-    protocol = "tcp"
-    ports    = ["80"]
+  dynamic "allow" {
+    for_each = var.allow
+    content {
+      protocol = allow.value.protocol
+      ports    = allow.value.ports
+    }
   }
 
   source_ranges = var.source_ranges
+
+  log_config {
+    metadata = "INCLUDE_ALL_METADATA"
+  }
 }

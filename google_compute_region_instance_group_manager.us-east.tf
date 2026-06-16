@@ -1,14 +1,16 @@
-resource "google_compute_region_instance_group_manager" "us-east" {
-  base_instance_name = "us-east1-mig"
-  name               = "us-east1-mig"
+resource "google_compute_region_instance_group_manager" "region" {
+  base_instance_name        = "${var.region}-mig"
+  name                      = "${var.region}-mig"
+  region                    = var.region
+  distribution_policy_zones = var.distribution_policy_zones
+  project                   = var.project
+
   version {
-    instance_template = google_compute_instance_template.us-east1-template.id
+    instance_template = google_compute_instance_template.us_east1_template.id
   }
-  region = "us-east1"
-  distribution_policy_zones = [
-    "us-east1-b",
-    "us-east1-c",
-    "us-east1-d",
-  ]
-  project = var.project
+
+  named_port {
+    name = "http"
+    port = 80
+  }
 }

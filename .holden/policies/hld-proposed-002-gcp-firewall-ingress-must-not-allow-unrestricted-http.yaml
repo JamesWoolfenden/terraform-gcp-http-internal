@@ -1,0 +1,32 @@
+id: HLD_PROPOSED_002
+name: GCP compute firewall ingress must not allow unrestricted HTTP access on port 80
+principle: network-security
+severity: HIGH
+rationale: |
+  A firewall rule with source_ranges containing 0.0.0.0/0 or ::/0 opens port 80
+  to the entire internet. For internal load balancers and private services, ingress
+  must be restricted to known internal CIDR ranges. Unrestricted HTTP exposes any
+  web service on port 80 to enumeration, brute-force, and exploitation from any
+  internet source — a violation of the principle of least-privilege networking.
+remediation: |
+  Replace 0.0.0.0/0 or ::/0 in source_ranges with explicit internal CIDRs and
+  reference them via a variable so the scope is visible and auditable:
+
+    resource "google_compute_firewall" "http" {
+      direction     = "INGRESS"
+      source_ranges = var.http_source_ranges  # e.g. ["10.0.0.0/8"]
+      allow {
+        protocol = "tcp"
+        ports    = ["80"]
+      }
+    }
+
+compliance:
+  cis_gcp: "3.6"
+  checkov: CKV_GCP_106
+resources:
+  google_compute_firewall:
+    path: source_ranges
+    none_of_items:
+      - "0.0.0.0/0"
+      - "::/0"

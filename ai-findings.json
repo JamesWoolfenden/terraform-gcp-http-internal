@@ -1,0 +1,85 @@
+{
+  "findings": [
+    {
+      "confidence": "high",
+      "explanation": "Both templates set startup-script-url to gs://cloud-training/gcpnet/httplb/startup.sh. The cloud-training bucket belongs to Google Cloud Training materials and is not under the operator's control \u2014 its contents can change at any time without notice or versioning guarantees. Every VM boot pulls and executes arbitrary code from this external bucket, creating a persistent supply-chain risk whose blast radius grows with each MIG scale-out event. A rules engine cannot distinguish operator-owned from externally-owned GCS bucket URLs by semantic inspection.",
+      "file": "google_compute_instance_template.europe_west1_template.tf",
+      "id": "HOLDEN_AI_001",
+      "line": 28,
+      "principle": "supply-chain",
+      "related_resources": [
+        "google_compute_instance_template.us_east1_template"
+      ],
+      "remediation": "Host the startup script in a GCS bucket owned by the project (e.g. gs://${var.project}-scripts/startup.sh) and pin to a specific versioned object. Reference it via startup-script-url or embed the script inline using the startup-script metadata key to eliminate the runtime dependency.",
+      "resource": "google_compute_instance_template.europe_west1_template",
+      "severity": "HIGH",
+      "title": "Both instance templates execute a startup script from an externally-owned GCS bucket"
+    },
+    {
+      "confidence": "high",
+      "explanation": "Line 43 contains \"ttps://www.googleapis.com/auth/trace.append\" \u2014 the leading 'h' is missing, making it an unrecognised OAuth scope. GCP silently ignores unknown scopes at token issuance, so every VM launched from this template will be denied Cloud Trace write permission despite the apparent intent to grant it. A rules engine validates attribute presence, not semantic validity of string values against a known OAuth scope list.",
+      "file": "google_compute_instance_template.us_east1_template.tf",
+      "id": "HOLDEN_AI_002",
+      "line": 43,
+      "principle": "governance",
+      "related_resources": [],
+      "remediation": "Correct the scope to \"https://www.googleapis.com/auth/trace.append\". Consolidate the inline list with europe_west1_template by referencing var.scopes to prevent future drift.",
+      "resource": "google_compute_instance_template.us_east1_template",
+      "severity": "LOW",
+      "title": "OAuth scope typo in us_east1_template silently drops Cloud Trace access"
+    },
+    {
+      "confidence": "high",
+      "explanation": "europe_west1_template correctly delegates to var.scopes while us_east1_template hardcodes an inline scope list. These two templates are intended as equivalent regional counterparts in the same module. The inline list already diverges (it contains the typo in HOLDEN_AI_002) and will continue to diverge silently whenever the var.scopes default is updated. Rules engines assess each resource in isolation and cannot detect semantic inconsistency between sibling resources that are meant to be equivalent.",
+      "file": "google_compute_instance_template.us_east1_template.tf",
+      "id": "HOLDEN_AI_003",
+      "line": 37,
+      "principle": "governance",
+      "related_resources": [
+        "google_compute_instance_template.europe_west1_template"
+      ],
+      "remediation": "Replace the inline scope list in us_east1_template with scopes = var.scopes to keep both templates consistently controlled by the module variable.",
+      "resource": "google_compute_instance_template.us_east1_template",
+      "severity": "MEDIUM",
+      "title": "Sibling templates define service_account scopes differently \u2014 inline list in us_east1_template will drift from var.scopes"
+    },
+    {
+      "confidence": "high",
+      "explanation": "google_compute_firewall.healthcheck uses allow { protocol = \"tcp\" } with no ports list, opening all 65535 TCP ports from var.source_ranges (GCP Health Checker CIDRs 130.211.0.0/22 and 35.191.0.0/16). By contrast, google_compute_firewall.default correctly limits its allow block to the ports in var.allow (defaulting to TCP 80). The Google Health Check CIDRs are shared globally across every GCP project, meaning any GCP customer can originate traffic from those ranges; restricting to the actual health-check port materially reduces the effective attack surface. Existing deterministic rules (HLD_GCP_278) only flag unrestricted TCP/UDP from 0.0.0.0/0, not from restricted but globally-shared CIDR ranges.",
+      "file": "google_compute_firewall.healthcheck.tf",
+      "id": "HOLDEN_AI_004",
+      "line": 6,
+      "principle": "network-security",
+      "related_resources": [
+        "google_compute_firewall.default"
+      ],
+      "remediation": "Add an explicit ports constraint to the healthcheck firewall's allow block matching the actual health-check port, for example: allow { protocol = \"tcp\"; ports = [\"80\"] }. Ideally source the port list from var.allow or a dedicated variable to stay consistent with google_compute_firewall.default.",
+      "resource": "google_compute_firewall.healthcheck",
+      "severity": "MEDIUM",
+      "title": "Healthcheck firewall allows all TCP ports; companion default firewall correctly restricts to the service port"
+    },
+    {
+      "confidence": "high",
+      "explanation": "The MIG's version block unconditionally references google_compute_instance_template.us_east1_template.id. If the module is deployed with var.region = \"europe-west1\", the manager will still launch instances from the us-east1 template (named \"useast1template\"), while europe_west1_template exists but is never used. The orphaned template accrues the same security findings (HLD_GCP_038, HLD_GCP_008, HLD_GCP_019, HLD_GCP_187) without serving any traffic. Rules engines operate per-resource and cannot detect a semantic mismatch between a region variable and a hardcoded cross-resource template reference.",
+      "file": "google_compute_region_instance_group_manager.us-east.tf",
+      "id": "HOLDEN_AI_005",
+      "line": 5,
+      "principle": "reliability",
+      "related_resources": [
+        "google_compute_instance_template.us_east1_template",
+        "google_compute_instance_template.europe_west1_template"
+      ],
+      "remediation": "Either document that this module is us-east1-only and remove europe_west1_template, or introduce region-based template selection: version { instance_template = var.region == \"us-east1\" ? google_compute_instance_template.us_east1_template.id : google_compute_instance_template.europe_west1_template.id }. Consider unifying both templates into a single regional template resource to eliminate duplication.",
+      "resource": "google_compute_region_instance_group_manager.region",
+      "severity": "MEDIUM",
+      "title": "Instance group manager hardcodes us_east1_template regardless of var.region; europe_west1_template is dead code"
+    }
+  ],
+  "suggested_policies": [
+    {
+      "rationale": "google_compute_firewall allow blocks for tcp or udp must specify explicit ports. The existing HLD_GCP_278 only flags this when source_ranges includes 0.0.0.0/0. A rule that requires explicit ports regardless of source range closes the gap for rules scoped to restricted but globally-shared CIDRs such as GCP health check ranges. The check requires a conditional ('when protocol is tcp or udp, ports must be non-empty') that the current DSL cannot express with a single attribute path condition.",
+      "requires_dsl_extension": true,
+      "yaml": "id: HLD_PROPOSED_001\nname: GCP firewall tcp and udp allow rules must specify explicit ports\nprinciple: network-security\nseverity: MEDIUM\nrationale: |\n  A firewall allow block for tcp or udp without a ports list grants access to all\n  65535 ports from the matched source CIDRs. Even when source_ranges are restricted\n  to known ranges (e.g., Google health check IPs or a corporate CIDR), omitting\n  the port list expands the permitted attack surface far beyond the intended service.\n  Explicit ports enforce least-privilege at the network layer and prevent port-scanning\n  pivots from sources permitted by other allow rules that share the same CIDRs.\nremediation: |\n  Add an explicit ports list to every allow block that uses protocol tcp or udp:\n\n    allow {\n      protocol = \"tcp\"\n      ports    = [\"80\"]\n    }\n\n  For health-check firewalls, source the port list from the same variable used by\n  the service firewall to guarantee consistency.\nresources:\n  google_compute_firewall:\n    path: allow.ports\n    not_empty: true\n"
+    }
+  ]
+}

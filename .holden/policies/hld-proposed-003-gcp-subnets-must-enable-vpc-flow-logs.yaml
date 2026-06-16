@@ -1,0 +1,37 @@
+id: HLD_PROPOSED_003
+name: GCP subnets must enable VPC Flow Logs
+principle: logging-and-monitoring
+severity: MEDIUM
+rationale: |
+  VPC Flow Logs capture network flows for VM instances, GKE nodes, and App Engine
+  flex instances within a subnet. Without them there is no visibility into traffic
+  patterns, making lateral movement detection, data-exfiltration investigation, and
+  compliance auditing impossible. Logs must be enabled on every subnet that can
+  carry workload traffic; subnets with purpose = "REGIONAL_MANAGED_PROXY" are
+  managed by GCP and do not support flow logs.
+remediation: |
+  Add a log_config block to every google_compute_subnetwork that carries workload
+  traffic:
+
+    resource "google_compute_subnetwork" "default" {
+      # ... other attributes ...
+      log_config {
+        aggregation_interval = "INTERVAL_5_SEC"
+        flow_sampling        = 0.5
+        metadata             = "INCLUDE_ALL_METADATA"
+      }
+    }
+
+compliance:
+  cis_gcp: "3.8"
+  checkov: CKV_GCP_26
+resources:
+  google_compute_subnetwork:
+    path: log_config
+    not_empty: true
+    exclude_when:
+      purpose:
+        one_of:
+          - "REGIONAL_MANAGED_PROXY"
+          - "GLOBAL_MANAGED_PROXY"
+          - "INTERNAL_HTTPS_LOAD_BALANCER"

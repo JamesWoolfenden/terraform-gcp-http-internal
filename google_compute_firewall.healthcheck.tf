@@ -1,10 +1,13 @@
 resource "google_compute_firewall" "healthcheck" {
   name          = "default-allow-health-check"
-  network       = var.network.name
-  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
+  network       = var.network
+  source_ranges = var.source_ranges
 
   allow {
     protocol = "tcp"
   }
 
+  log_config {
+    metadata = "INCLUDE_ALL_METADATA"
+  }
 }

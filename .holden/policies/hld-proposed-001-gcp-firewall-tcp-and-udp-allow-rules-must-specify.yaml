@@ -1,0 +1,25 @@
+id: HLD_PROPOSED_001
+name: GCP firewall tcp and udp allow rules must specify explicit ports
+principle: network-security
+severity: MEDIUM
+rationale: |
+  A firewall allow block for tcp or udp without a ports list grants access to all
+  65535 ports from the matched source CIDRs. Even when source_ranges are restricted
+  to known ranges (e.g., Google health check IPs or a corporate CIDR), omitting
+  the port list expands the permitted attack surface far beyond the intended service.
+  Explicit ports enforce least-privilege at the network layer and prevent port-scanning
+  pivots from sources permitted by other allow rules that share the same CIDRs.
+remediation: |
+  Add an explicit ports list to every allow block that uses protocol tcp or udp:
+
+    allow {
+      protocol = "tcp"
+      ports    = ["80"]
+    }
+
+  For health-check firewalls, source the port list from the same variable used by
+  the service firewall to guarantee consistency.
+resources:
+  google_compute_firewall:
+    path: allow.ports
+    not_empty: true
