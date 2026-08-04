@@ -27,8 +27,7 @@ No modules.
 | [google_compute_firewall.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_firewall) | resource |
 | [google_compute_firewall.healthcheck](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_firewall) | resource |
 | [google_compute_forwarding_rule.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_forwarding_rule) | resource |
-| [google_compute_instance_template.europe_west1_template](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance_template) | resource |
-| [google_compute_instance_template.us_east1_template](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance_template) | resource |
+| [google_compute_instance_template.region](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_instance_template) | resource |
 | [google_compute_region_backend_service.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_region_backend_service) | resource |
 | [google_compute_region_health_check.default](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_region_health_check) | resource |
 | [google_compute_region_instance_group_manager.region](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_region_instance_group_manager) | resource |
@@ -41,28 +40,27 @@ No modules.
 
 | Name | Description | Type | Default | Required |
 | ---- | ----------- | ---- | ------- | :------: |
-| <a name="input_allow"></a> [allow](#input\_allow) | The list of allowed protocols and ports for the firewall rule. | <pre>list(object({<br/>    protocol = string<br/>    ports    = list(string)<br/>  }))</pre> | <pre>[<br/>  {<br/>    "ports": [<br/>      "80"<br/>    ],<br/>    "protocol": "tcp"<br/>  }<br/>]</pre> | no |
 | <a name="input_armor_deny_ranges"></a> [armor\_deny\_ranges](#input\_armor\_deny\_ranges) | Source IP ranges that Cloud Armor will deny with HTTP 403. Must contain at least one entry. | `list(string)` | n/a | yes |
-| <a name="input_distribution_policy_zones"></a> [distribution\_policy\_zones](#input\_distribution\_policy\_zones) | The zones to deploy the resources into. | `list(string)` | <pre>[<br/>  "us-east1-b",<br/>  "us-east1-c",<br/>  "us-east1-d"<br/>]</pre> | no |
 | <a name="input_health_check_path"></a> [health\_check\_path](#input\_health\_check\_path) | The HTTP path used by the regional health check. | `string` | `"/"` | no |
 | <a name="input_machine_type"></a> [machine\_type](#input\_machine\_type) | The machine type to use for the instance template. | `string` | `"n1-standard-1"` | no |
 | <a name="input_network"></a> [network](#input\_network) | The network to deploy the resources into. | `string` | n/a | yes |
+| <a name="input_port"></a> [port](#input\_port) | The single TCP port this internal load balancer serves and health-checks on. Referenced consistently by the health check, the MIG's named port, the forwarding rule, and both firewalls -- there is exactly one port for the whole pipeline. | `number` | `80` | no |
 | <a name="input_project"></a> [project](#input\_project) | The project to deploy the resources into. | `string` | n/a | yes |
-| <a name="input_region"></a> [region](#input\_region) | The region to deploy the resources into. | `string` | n/a | yes |
+| <a name="input_regions"></a> [regions](#input\_regions) | Map of region name to its regional config. One full internal LB stack (instance template, MIG, health check, backend service, url map, proxy, forwarding rule, security policy) is created per entry. | <pre>map(object({<br/>    subnetwork                = string<br/>    distribution_policy_zones = list(string)<br/>  }))</pre> | n/a | yes |
 | <a name="input_scopes"></a> [scopes](#input\_scopes) | The scopes to assign to the service account. | `list(string)` | <pre>[<br/>  "storage-ro",<br/>  "https://www.googleapis.com/auth/logging.write",<br/>  "https://www.googleapis.com/auth/monitoring.write",<br/>  "https://www.googleapis.com/auth/service.management.readonly",<br/>  "https://www.googleapis.com/auth/servicecontrol",<br/>  "https://www.googleapis.com/auth/trace.append"<br/>]</pre> | no |
 | <a name="input_service_account_email"></a> [service\_account\_email](#input\_service\_account\_email) | Email of the dedicated service account to attach to instance templates. | `string` | n/a | yes |
-| <a name="input_source_ranges"></a> [source\_ranges](#input\_source\_ranges) | The source ranges to allow for the firewall rule. | `list(string)` | n/a | yes |
-| <a name="input_subnetwork"></a> [subnetwork](#input\_subnetwork) | The subnetwork to deploy the resources into. | `string` | n/a | yes |
+| <a name="input_source_ranges"></a> [source\_ranges](#input\_source\_ranges) | The source ranges allowed to reach the firewall rules. Must be either one of GCP's own fixed health-check/IAP probe ranges (used as-is), or an RFC1918 private range no broader than /24 -- this module builds an internal-only load balancer, so neither a public range nor a sprawling /8-/23 internal grant is valid here. | `list(string)` | n/a | yes |
+| <a name="input_target_size"></a> [target\_size](#input\_target\_size) | The target number of running instances in the managed instance group. | `number` | `2` | no |
 
 ## Outputs
 
 | Name | Description |
 | ---- | ----------- |
-| <a name="output_backend_service"></a> [backend\_service](#output\_backend\_service) | The regional backend service. |
-| <a name="output_forwarding_rule"></a> [forwarding\_rule](#output\_forwarding\_rule) | The internal forwarding rule (load balancer entry point). |
-| <a name="output_health_check"></a> [health\_check](#output\_health\_check) | The regional HTTP health check. |
-| <a name="output_instance_group_manager"></a> [instance\_group\_manager](#output\_instance\_group\_manager) | The regional managed instance group. |
-| <a name="output_security_policy"></a> [security\_policy](#output\_security\_policy) | The Cloud Armor regional security policy. |
+| <a name="output_backend_service"></a> [backend\_service](#output\_backend\_service) | The regional backend services, keyed by region. |
+| <a name="output_forwarding_rule"></a> [forwarding\_rule](#output\_forwarding\_rule) | The internal forwarding rules (load balancer entry points), keyed by region. |
+| <a name="output_health_check"></a> [health\_check](#output\_health\_check) | The regional HTTP health checks, keyed by region. |
+| <a name="output_instance_group_manager"></a> [instance\_group\_manager](#output\_instance\_group\_manager) | The regional managed instance groups, keyed by region. |
+| <a name="output_security_policy"></a> [security\_policy](#output\_security\_policy) | The Cloud Armor regional security policies, keyed by region. |
 <!-- END OF PRE-COMMIT-TERRAFORM DOCS HOOK -->
 
 ## Role and Permissions
@@ -71,7 +69,7 @@ No modules.
 The Terraform resource required is:
 
 ```golang
-
+# apply role
 resource "google_project_iam_custom_role" "terraform_pike" {
   project     = "pike-477416"
   role_id     = "terraform_pike"
@@ -121,6 +119,27 @@ resource "google_project_iam_custom_role" "terraform_pike" {
     "compute.regionUrlMaps.delete",
     "compute.regionUrlMaps.get",
     "compute.regionUrlMaps.update"
+  ]
+}
+
+# plan role
+resource "google_project_iam_custom_role" "terraform_pike_plan" {
+  project     = "pike-477416"
+  role_id     = "terraform_pike_plan"
+  title       = "terraform_pike_plan"
+  description = "A user with least privileges"
+  permissions = [
+    "compute.firewalls.get",
+    "compute.forwardingRules.get",
+    "compute.images.get",
+    "compute.instanceGroupManagers.get",
+    "compute.instanceTemplates.get",
+    "compute.networks.get",
+    "compute.regionBackendServices.get",
+    "compute.regionHealthChecks.get",
+    "compute.regionSecurityPolicies.get",
+    "compute.regionTargetHttpProxies.get",
+    "compute.regionUrlMaps.get"
   ]
 }
 

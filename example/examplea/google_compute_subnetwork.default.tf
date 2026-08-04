@@ -1,10 +1,12 @@
 
 resource "google_compute_subnetwork" "default" {
-  name                     = "prod-subnet"
-  region                   = var.region
+  for_each = var.regions
+
+  name                     = "prod-subnet-${each.key}"
+  region                   = each.key
   project                  = var.project
   network                  = google_compute_network.this.id
-  ip_cidr_range            = "10.0.0.0/24"
+  ip_cidr_range            = each.value.cidr
   private_ip_google_access = true
 
   log_config {
@@ -15,11 +17,13 @@ resource "google_compute_subnetwork" "default" {
 }
 
 resource "google_compute_subnetwork" "proxy" {
-  name          = "prod-proxy-subnet"
-  region        = var.region
+  for_each = var.regions
+
+  name          = "prod-proxy-subnet-${each.key}"
+  region        = each.key
   project       = var.project
   network       = google_compute_network.this.id
-  ip_cidr_range = "10.0.1.0/24"
+  ip_cidr_range = each.value.proxy_cidr
   purpose       = "REGIONAL_MANAGED_PROXY"
   role          = "ACTIVE"
 }

@@ -19,29 +19,27 @@ variable "network" {
 
 variable "source_ranges" {
   type        = list(string)
-  description = "The source ranges to allow for the firewall rule."
+  description = "The source ranges allowed to reach the firewall rules. Must be either one of GCP's own fixed health-check/IAP probe ranges (used as-is), or an RFC1918 private range no broader than /24 -- this module builds an internal-only load balancer, so neither a public range nor a sprawling /8-/23 internal grant is valid here."
   validation {
-    condition     = length(var.source_ranges) > 0
-    error_message = "source_ranges must contain at least one CIDR range."
-  }
-}
-
-variable "allow" {
-  type = list(object({
-    protocol = string
-    ports    = list(string)
-  }))
-  default = [
-    {
-      protocol = "tcp"
-      ports    = ["80"]
-    }
-  ]
-
-  description = "The list of allowed protocols and ports for the firewall rule."
-  validation {
-    condition     = length(var.allow) > 0
-    error_message = "allow must contain at least one protocol and port."
+    condition = length(var.source_ranges) > 0 && alltrue([
+      for r in var.source_ranges :
+      anytrue([
+        for pattern in [
+          "^130\\.211\\.[0-3]\\.",            # GCP global LB health-check range 130.211.0.0/22
+          "^35\\.191\\.",                     # GCP global LB health-check range 35.191.0.0/16
+          "^35\\.235\\.(24[0-9]|25[0-5])\\.", # GCP IAP TCP forwarding range 35.235.240.0/20
+        ] : can(regex(pattern, r))
+        ]) || (
+        anytrue([
+          for pattern in [
+            "^10\\.",                           # RFC1918 10.0.0.0/8
+            "^172\\.(1[6-9]|2[0-9]|3[0-1])\\.", # RFC1918 172.16.0.0/12
+            "^192\\.168\\.",                    # RFC1918 192.168.0.0/16
+          ] : can(regex(pattern, r))
+        ]) && can(regex("/(2[4-9]|3[0-2])$", r)) # no broader than /24
+      )
+    ])
+    error_message = "source_ranges must contain at least one CIDR range. Each range must be either one of GCP's own health-check/IAP probe ranges (130.211.0.0/22, 35.191.0.0/16, 35.235.240.0/20, used as-is), or an RFC1918 private range (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) no broader than /24 -- this module builds an internal-only load balancer, and a /8 or /16 internal grant is barely narrower than the whole private address space."
   }
 }
 
@@ -62,35 +60,19 @@ variable "scopes" {
   }
 }
 
-variable "subnetwork" {
-  type        = string
-  description = "The subnetwork to deploy the resources into."
+variable "regions" {
+  type = map(object({
+    subnetwork                = string
+    distribution_policy_zones = list(string)
+  }))
+  description = "Map of region name to its regional config. One full internal LB stack (instance template, MIG, health check, backend service, url map, proxy, forwarding rule, security policy) is created per entry."
   validation {
-    condition     = length(var.subnetwork) > 0
-    error_message = "subnetwork must be a non-empty string."
+    condition     = length(var.regions) > 0
+    error_message = "regions must contain at least one region."
   }
-}
-
-variable "distribution_policy_zones" {
-  type        = list(string)
-  description = "The zones to deploy the resources into."
   validation {
-    condition     = length(var.distribution_policy_zones) > 0
-    error_message = "distribution_policy_zones must be a non-empty list of strings."
-  }
-  default = [
-    "us-east1-b",
-    "us-east1-c",
-    "us-east1-d",
-  ]
-}
-
-variable "region" {
-  type        = string
-  description = "The region to deploy the resources into."
-  validation {
-    condition     = length(var.region) > 0
-    error_message = "region must be a non-empty string."
+    condition     = alltrue([for r in var.regions : length(r.distribution_policy_zones) > 0])
+    error_message = "each region's distribution_policy_zones must be a non-empty list of strings."
   }
 }
 
@@ -130,5 +112,25 @@ variable "armor_deny_ranges" {
   validation {
     condition     = length(var.armor_deny_ranges) > 0
     error_message = "armor_deny_ranges must contain at least one CIDR range."
+  }
+}
+
+variable "port" {
+  type        = number
+  description = "The single TCP port this internal load balancer serves and health-checks on. Referenced consistently by the health check, the MIG's named port, the forwarding rule, and both firewalls -- there is exactly one port for the whole pipeline."
+  default     = 80
+  validation {
+    condition     = var.port > 0 && var.port <= 65535
+    error_message = "port must be a valid TCP port number (1-65535)."
+  }
+}
+
+variable "target_size" {
+  type        = number
+  description = "The target number of running instances in the managed instance group."
+  default     = 2
+  validation {
+    condition     = var.target_size > 0
+    error_message = "target_size must be greater than 0."
   }
 }

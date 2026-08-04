@@ -1,0 +1,84 @@
+{
+  "findings": [
+    {
+      "confidence": "high",
+      "explanation": "Neither google_compute_firewall.default nor google_compute_firewall.healthcheck sets target_tags or target_service_accounts, and google_compute_instance_template.region sets no tags either. In GCP, a firewall rule with no target scoping applies to every instance in var.network -- not just this module's own MIG-managed backends. Since var.network is caller-supplied (this module is meant to be dropped into an existing VPC), any workload sharing that network inherits whatever ports/source_ranges the caller configures for this 'internal LB' module, including google_compute_firewall.healthcheck's allow block which has no ports specified at all (every TCP port, 0-65535). Deterministic policies HLD_GCP_074 and HLD_GCP_081 exist for exactly this target_tags/target_service_accounts-vs-instance consistency check, but both use cross_match against resource_type google_compute_instance -- a MIG's actual instances are created dynamically by GCP from google_compute_instance_template and never appear as google_compute_instance resources in Terraform, so cross_match finds zero candidates in this graph and silently returns Unknown (no finding) regardless of whether target_tags is set or matches. This is a structural blind spot for any module using MIGs (the standard GCP pattern for managed/autoscaled compute), not something specific to this repo's current state.",
+      "file": "google_compute_firewall.default.tf",
+      "first_seen": "2026-08-03",
+      "fix": "# google_compute_instance_template.region.tf -- add inside the resource block:\n  tags = [\"http-internal-lb-backend\"]\n\n# google_compute_firewall.default.tf -- add inside the resource block:\n  target_tags = [\"http-internal-lb-backend\"]\n\n# google_compute_firewall.healthcheck.tf -- add inside the resource block:\n  target_tags = [\"http-internal-lb-backend\"]\n",
+      "fixable": true,
+      "id": "HOLDEN_AI_001",
+      "last_seen": "2026-08-03",
+      "line": 1,
+      "principle": "network-security",
+      "related_resources": [
+        "google_compute_firewall.healthcheck",
+        "google_compute_instance_template.region"
+      ],
+      "remediation": "Add a network tag to the instance template and target_tags to both firewall rules so they only apply to this module's own backend instances, independent of whether the deterministic engine can verify the match.",
+      "resource": "google_compute_firewall.default",
+      "severity": "HIGH",
+      "status": "fixed",
+      "title": "Firewall rules have no target_tags/target_service_accounts, so they apply to every instance in the caller's shared VPC, not just this module's own backends"
+    },
+    {
+      "confidence": "high",
+      "explanation": "This module is explicitly an internal-only load balancer -- the repo is named terraform-gcp-http-internal, google_compute_forwarding_rule.default.tf sets load_balancing_scheme = \"INTERNAL_MANAGED\" and allow_global_access = false, and the Cloud Armor policy exists purely as a deny-list layered on top. var.source_ranges and var.allow originally only validated non-emptiness, letting a caller pass source_ranges = [\"0.0.0.0/0\"] or protocol = \"all\" straight through to google_compute_firewall.default/.healthcheck. Fixed in stages: (1) validation tightened to reject 0.0.0.0/0/::/0 and protocol \"all\"; (2) var.allow removed entirely and the firewall hardcoded to tcp/var.port after tracing that every other stage of the pipeline (health check, backend service, MIG named_port, forwarding_rule) was already fixed to the same port -- var.allow was vestigial, not real configurability; (3) source_ranges tightened to GCP's own health-check/IAP ranges or RFC1918 no broader than /24. Deterministic findings HLD_GCP_128/275/276/293/207/292/037/208/278 on these two resources are now genuinely resolved (not suppressed) once allow became a literal value. The remaining HLD_GCP_009 (unresolvable source_ranges) was root-caused to a real holden engine bug -- see notes -- and is now fixed upstream too: both roots scan clean (0 findings).",
+      "file": "variables.tf",
+      "first_seen": "2026-08-03",
+      "fix": "# variables.tf -- replace the source_ranges validation block:\n  validation {\n    condition     = length(var.source_ranges) > 0 && !contains(var.source_ranges, \"0.0.0.0/0\") && !contains(var.source_ranges, \"::/0\")\n    error_message = \"source_ranges must contain at least one CIDR range and must not include 0.0.0.0/0 or ::/0 -- this module builds an internal-only load balancer; unrestricted source ranges defeat that guarantee.\"\n  }\n\n# variables.tf -- replace the allow validation block:\n  validation {\n    condition     = length(var.allow) > 0 && alltrue([for a in var.allow : lower(a.protocol) != \"all\"])\n    error_message = \"allow must contain at least one protocol/port entry and must not use protocol \\\"all\\\" -- this module builds an internal-only load balancer; specify explicit protocols/ports.\"\n  }\n",
+      "fixable": true,
+      "id": "HOLDEN_AI_002",
+      "last_seen": "2026-08-03",
+      "line": 20,
+      "principle": "network-security",
+      "related_resources": [
+        "var.allow",
+        "google_compute_firewall.default",
+        "google_compute_firewall.healthcheck",
+        "google_compute_forwarding_rule.default"
+      ],
+      "remediation": "Extend the existing validation blocks on source_ranges and allow to reject the unsafe values outright, keeping each variable to a single validation block for compatibility with older Terraform versions (multiple validation blocks per variable require >=1.9, and the example's terraform.tf currently pins required_version >= 1.5.0).",
+      "resource": "var.source_ranges",
+      "severity": "HIGH",
+      "status": "fixed",
+      "title": "var.source_ranges and var.allow have no CIDR/protocol safety validation, letting a caller trivially defeat this module's internal-only design intent"
+    },
+    {
+      "confidence": "medium",
+      "explanation": "data.google_compute_image.debian resolves to the newest image in the debian-11 family at apply time -- there's no rule engine coverage for GCP image-family staleness (this is a data source lookup, not a resource attribute a policy can key on). Debian 11 (Bullseye) left regular security support in mid-2024 and is now in (or past) its LTS window; as of the scan date it is no longer the actively-maintained Debian release. This isn't hardcoded to a version, so it will keep serving whatever Google publishes under that family name, but the family itself isn't the current-generation OS, and there's no variable exposing the family/image so a caller can opt into a newer one without forking the module.",
+      "file": "data.google_compute_image.debian.tf",
+      "first_seen": "2026-08-03",
+      "fixable": false,
+      "id": "HOLDEN_AI_003",
+      "last_seen": "2026-08-03",
+      "line": 1,
+      "principle": "patch-management",
+      "related_resources": [
+        "google_compute_instance_template.region"
+      ],
+      "remediation": "Move the family to a currently-supported release (e.g. debian-12) and consider exposing it as a variable (with debian-12 as the default) so callers can track OS updates without waiting on a module release.",
+      "resource": "data.google_compute_image.debian",
+      "severity": "LOW",
+      "status": "open",
+      "title": "Boot image floats on the debian-11 family with no newer-OS migration path, and Debian 11 is at or near end of LTS support"
+    }
+  ],
+  "notes": [
+    "HLD_GCP_459/HLD_GCP_391 false positives on google_compute_instance_template.region (attribute doesn't exist on that resource type) -- fixed upstream via branch fix/gce-instance-template-alias-attrs, merged into JamesWoolfenden/holden main locally by the repo owner (commit 745b70b). No longer fires as of the rebuilt binary.",
+    "HLD_GCP_009 false positive on both firewalls (source_ranges is a legitimate but statically-unresolvable module variable) -- root-caused to a real bug in holden's any: (OR) combinator: it let a definite Fail branch (allow absent: true, trivially false since allow is present) dominate over a co-occurring Unknown branch (source_ranges not_contains 0.0.0.0/0, unresolvable), when correct three-valued OR logic requires Unknown to dominate over Fail (Pass > Unknown > Fail). Fixed upstream in both duplicate occurrences of the combinator (evaluateResourcePolicy and evaluateAttrs) via branch fix/any-combinator-unknown-precedence, pushed to JamesWoolfenden/holden (commit 35a10f6). Also fixed a related parser gap (type-constraint function calls like `map(any)` were indistinguishable from truly-dynamic expressions) and made 5 existing holden test fixtures explicit where they'd been relying on an absent-attribute provider-default that holden's Equals check doesn't model. gh pr create hit the PaloAltoNetworks org SAML wall (repository.parent lookup) even targeting the fork directly -- branch is pushed, PR needs opening manually: https://github.com/JamesWoolfenden/holden/pull/new/fix/any-combinator-unknown-precedence . Both this repo's roots (module root and example/examplea) now scan 0 findings with the rebuilt binary."
+  ],
+  "scan_date": "2026-08-03T00:00:00Z",
+  "scan_path": "e:/Code/modules/gcp/terraform-gcp-http-internal",
+  "suggested_policies": [
+    {
+      "rationale": "HLD_GCP_074 checks that a firewall's target_tags matches at least one google_compute_instance.tags in the same graph, but MIG-managed fleets -- the standard GCP pattern for autoscaled/managed compute, used by this repo -- declare their tags on google_compute_instance_template, whose actual instances are created dynamically by GCP and never appear as google_compute_instance resources in Terraform. cross_match against google_compute_instance therefore returns Unknown for any MIG-based stack, silently skipping the check regardless of whether target_tags is set correctly. This mirrors HLD_GCP_074 exactly, just against the resource type MIG users actually declare tags on.",
+      "yaml": "id: HLD_PROPOSED_001\nname: GCP firewall target_tags must match at least one compute instance template tag\nprinciple: network-security\nseverity: HIGH\nrationale: |\n  A firewall rule with target_tags only applies to VM instances that carry those\n  same network tags. Managed instance groups run instances created from a\n  google_compute_instance_template, not a standalone google_compute_instance --\n  if no instance template in the workspace declares a matching tag, the rule\n  silently applies to nothing (or, if target_tags is entirely absent, applies\n  network-wide instead of being scoped at all). This is the MIG equivalent of\n  the standalone-instance check in HLD_GCP_074.\nremediation: |\n  Ensure at least one google_compute_instance_template in the same workspace\n  declares the tag(s) listed in the firewall's target_tags:\n\n    resource \"google_compute_firewall\" \"backend\" {\n      target_tags = [\"http-internal-lb-backend\"]\n    }\n\n    resource \"google_compute_instance_template\" \"region\" {\n      tags = [\"http-internal-lb-backend\"]  # must contain at least one value from target_tags\n    }\n\n  If the instance template is defined in a separate workspace or module, suppress\n  this finding with a holden:ignore comment and document the cross-workspace dependency.\nresources:\n  google_compute_firewall:\n    cross_match:\n      resource_type: google_compute_instance_template\n      this_field: target_tags\n      that_field: tags\n"
+    },
+    {
+      "rationale": "Same gap as HLD_PROPOSED_001, for the service-account equivalent: HLD_GCP_081 cross_matches target_service_accounts against google_compute_instance.service_account.email, but MIG-managed instances carry their service account on google_compute_instance_template.service_account.email and are invisible to that check for the same reason.",
+      "yaml": "id: HLD_PROPOSED_002\nname: GCP firewall target_service_accounts must match at least one compute instance template service account\nprinciple: network-security\nseverity: HIGH\nrationale: |\n  A google_compute_firewall with target_service_accounts only applies to VM\n  instances running a service account in that list. Managed instance groups run\n  instances created from a google_compute_instance_template -- if no instance\n  template in the workspace runs a matching service account, the rule silently\n  applies to nothing. This is the MIG equivalent of the standalone-instance\n  check in HLD_GCP_081.\nremediation: |\n  Ensure at least one google_compute_instance_template in the same workspace\n  declares a service account whose email appears in the firewall's\n  target_service_accounts:\n\n    resource \"google_compute_firewall\" \"backend\" {\n      target_service_accounts = [\"my-sa@project.iam.gserviceaccount.com\"]\n    }\n\n    resource \"google_compute_instance_template\" \"region\" {\n      service_account {\n        email = \"my-sa@project.iam.gserviceaccount.com\"\n      }\n    }\n\n  If the instance template is defined in a separate workspace or module, suppress\n  with holden:ignore and document the cross-workspace dependency.\nresources:\n  google_compute_firewall:\n    cross_match:\n      resource_type: google_compute_instance_template\n      this_field: target_service_accounts\n      that_field: service_account.email\n"
+    }
+  ],
+  "suggested_suppressions": []
+}

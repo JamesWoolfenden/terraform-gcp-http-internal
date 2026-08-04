@@ -8,13 +8,28 @@ variable "project" {
   }
 }
 
-variable "region" {
-  type        = string
-  description = "The GCP region to deploy resources into."
-  default     = "us-east1"
+variable "regions" {
+  type = map(object({
+    cidr                      = string
+    proxy_cidr                = string
+    distribution_policy_zones = list(string)
+  }))
+  description = "Map of region name to its network config for the example deployment."
+  default = {
+    "us-east1" = {
+      cidr                      = "10.0.0.0/24"
+      proxy_cidr                = "10.0.1.0/24"
+      distribution_policy_zones = ["us-east1-b", "us-east1-c", "us-east1-d"]
+    }
+    "europe-west1" = {
+      cidr                      = "10.0.2.0/24"
+      proxy_cidr                = "10.0.3.0/24"
+      distribution_policy_zones = ["europe-west1-b", "europe-west1-c", "europe-west1-d"]
+    }
+  }
   validation {
-    condition     = length(var.region) > 0
-    error_message = "region must be a non-empty string."
+    condition     = length(var.regions) > 0
+    error_message = "regions must contain at least one region."
   }
 }
 

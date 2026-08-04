@@ -1,6 +1,8 @@
 resource "google_compute_region_security_policy" "default" {
-  name        = "${var.region}-cloud-armor"
-  region      = var.region
+  for_each = var.regions
+
+  name        = "${each.key}-cloud-armor"
+  region      = each.key
   project     = var.project
   description = "Cloud Armor WAF policy for the internal HTTP load balancer"
   type        = "CLOUD_ARMOR"

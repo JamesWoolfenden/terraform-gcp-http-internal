@@ -2,6 +2,15 @@ resource "google_compute_network" "this" {
   name                            = "prod-network"
   project                         = "pike-477416"
   delete_default_routes_on_create = true
+  auto_create_subnetworks         = false
+}
+
+resource "google_compute_route" "this" {
+  name       = "internet-route"
+  project    = "pike-477416"
+  network    = google_compute_network.this.self_link
+  dest_range = "10.0.0.0/16"
+  priority   = 1000
 }
 
 resource "google_compute_firewall" "default" {

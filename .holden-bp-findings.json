@@ -1,0 +1,95 @@
+{
+  "findings": [
+    {
+      "confidence": "high",
+      "explanation": "The MIG sets neither `target_size` nor is it managed by a `google_compute_region_autoscaler`, and no such autoscaler resource exists anywhere in this module or the example. Per the provider docs, target_size 'should always be explicitly set unless this resource is attached to an autoscaler.' Left unset with no autoscaler, GCP defaults the group to 0 running instances on creation, so the load balancer this module builds (forwarding rule -> proxy -> url map -> backend service -> this MIG) has zero backends until someone manually resizes the group out-of-band. That is a full outage of the internal LB on first apply, and any subsequent `terraform apply` will drift the size back to whatever Terraform still doesn't manage.",
+      "file": "google_compute_region_instance_group_manager.us-east.tf",
+      "first_seen": "2026-08-03",
+      "fix": "variable \"target_size\" {\n  type        = number\n  description = \"The target number of running instances in the managed instance group.\"\n  default     = 2\n  validation {\n    condition     = var.target_size > 0\n    error_message = \"target_size must be greater than 0.\"\n  }\n}\n\n# in google_compute_region_instance_group_manager.region:\n  target_size = var.target_size\n",
+      "fixable": true,
+      "id": "HOLDEN_BP_001",
+      "last_seen": "2026-08-03",
+      "line": 1,
+      "principle": "reliability",
+      "remediation": "Either set an explicit `target_size` (ideally sourced from a new variable so callers control capacity), or attach a `google_compute_region_autoscaler` to the MIG and leave target_size unset. For a module presented as a production internal LB, at minimum a variable-driven target_size with a non-zero default removes the zero-instance trap.",
+      "resource": "google_compute_region_instance_group_manager.region",
+      "severity": "MEDIUM",
+      "status": "fixed",
+      "title": "Regional instance group manager has no target_size and no autoscaler attached"
+    },
+    {
+      "confidence": "high",
+      "explanation": "The module already defines google_compute_region_health_check.default and wires it to the backend service for traffic routing, but nothing wires a health check to the MIG's auto_healing_policies. Today, an instance that fails the health check is only pulled out of load-balancer rotation -- it keeps running broken indefinitely, silently reducing effective capacity until someone notices and intervenes manually. auto_healing_policies is what actually recreates instances that fail health checks.",
+      "file": "google_compute_region_instance_group_manager.us-east.tf",
+      "first_seen": "2026-08-03",
+      "fix": "auto_healing_policies {\n  health_check      = google_compute_region_health_check.default.id\n  initial_delay_sec = 300\n}\n",
+      "fixable": true,
+      "id": "HOLDEN_BP_002",
+      "last_seen": "2026-08-03",
+      "line": 1,
+      "principle": "reliability",
+      "remediation": "Add an auto_healing_policies block to the MIG referencing the existing health check (a distinct health check resource with a longer interval is the GCP-recommended pattern to avoid overlapping thresholds, but reusing the existing one is a reasonable minimum).",
+      "resource": "google_compute_region_instance_group_manager.region",
+      "severity": "MEDIUM",
+      "status": "fixed",
+      "title": "Instance group manager has no auto_healing_policies, so unhealthy instances are never recreated"
+    },
+    {
+      "confidence": "high",
+      "explanation": "Only google_compute_instance_template.us_east1_template was referenced (by the MIG's version block). Per the module's original intent (a cross-region internal LB), europe_west1_template was a second-region instance template that was started but never got its own MIG/backend/health-check/forwarding-rule stack. Fixed by generalizing the module's public interface from a single var.region/var.subnetwork/var.distribution_policy_zones to a var.regions map, and converting every regional resource (instance template, MIG, health check, backend service, url map, proxy, forwarding rule, security policy) to for_each = var.regions. The example now provisions both us-east1 and europe-west1 with real subnetworks/proxy-subnets and passes both into the module, confirmed end-to-end with `tofu plan` producing a complete stack per region.",
+      "file": "google_compute_instance_template.region.tf",
+      "first_seen": "2026-08-03",
+      "fixable": false,
+      "id": "HOLDEN_BP_003",
+      "last_seen": "2026-08-03",
+      "line": 3,
+      "principle": "maintainability",
+      "remediation": "Done -- see google_compute_instance_template.region.tf and the for_each conversion across all google_compute_region_*.tf files. This was a breaking change to the module's public interface (var.region/var.subnetwork/var.distribution_policy_zones replaced by var.regions; outputs are now maps keyed by region) -- warrants a major version bump.",
+      "resource": "google_compute_instance_template.region",
+      "severity": "LOW",
+      "status": "fixed",
+      "title": "google_compute_instance_template.europe_west1_template was declared but never wired into a second region's LB stack"
+    },
+    {
+      "confidence": "medium",
+      "explanation": "google_compute_instance_template is immutable in the GCP API -- any change to its arguments (image, disk size, metadata, network) forces Terraform to replace the resource. With a fixed `name` and no `lifecycle { create_before_destroy = true }`, Terraform's default destroy-then-create replacement order tries to delete the template while it is still referenced by google_compute_region_instance_group_manager.region's version block. GCP will reject that delete ('resource in use by another resource'), so the very first template edit after initial apply (e.g. bumping the base image) will fail the pipeline and require manual state surgery to unblock. The same issue applies to europe_west1_template.tf:3.",
+      "file": "google_compute_instance_template.us_east1_template.tf",
+      "first_seen": "2026-08-03",
+      "fixable": false,
+      "id": "HOLDEN_BP_004",
+      "last_seen": "2026-08-03",
+      "line": 3,
+      "principle": "reliability",
+      "remediation": "Switch to name_prefix (parameterized like every other resource in this module, e.g. \"${var.region}-tmpl-\") and add lifecycle { create_before_destroy = true } so Terraform creates the replacement template before detaching/deleting the old one. Note this is itself a breaking change for anyone with existing state on the current fixed names -- worth calling out in a changelog/major version bump rather than a silent patch.",
+      "resource": "google_compute_instance_template.us_east1_template",
+      "severity": "LOW",
+      "status": "fixed",
+      "title": "Instance templates use a fixed name instead of name_prefix + create_before_destroy, blocking future in-place changes"
+    },
+    {
+      "confidence": "medium",
+      "explanation": "Without an update_policy block, the regional MIG defaults to OPPORTUNISTIC updates: when the version.instance_template changes, Terraform updates the MIG's desired state but GCP does not proactively recreate the already-running instances to pick it up. They keep running the old template indefinitely until something else (manual recreation, autoscaler churn) replaces them. Anyone changing the machine image, disk size, or metadata via this module and expecting it to actually take effect on running instances will be surprised it silently doesn't.",
+      "file": "google_compute_region_instance_group_manager.us-east.tf",
+      "first_seen": "2026-08-03",
+      "fix": "update_policy {\n  type                  = \"PROACTIVE\"\n  minimal_action        = \"REPLACE\"\n  max_surge_fixed       = length(var.distribution_policy_zones)\n  max_unavailable_fixed = 0\n}\n",
+      "fixable": true,
+      "id": "HOLDEN_BP_005",
+      "last_seen": "2026-08-03",
+      "line": 1,
+      "principle": "reliability",
+      "remediation": "Add an explicit update_policy with type = \"PROACTIVE\" so template changes actually roll out, tuned with max_surge/max_unavailable appropriate for the group's size.",
+      "resource": "google_compute_region_instance_group_manager.region",
+      "severity": "LOW",
+      "status": "fixed",
+      "title": "Instance group manager has no update_policy, so instance_template changes never roll out to running instances"
+    }
+  ],
+  "scan_date": "2026-08-03T00:00:00Z",
+  "scan_path": ".",
+  "suggested_policies": [
+    {
+      "rationale": "A regional/zonal MIG that sets neither target_size nor is attached to an autoscaler silently defaults to 0 running instances, which is a deterministic, mechanically-checkable footgun (not context-dependent like most sizing questions) -- any module shipping a MIG without one of these two knobs is shipping a zero-capacity trap by default.",
+      "yaml": "id: HLD_GCP_XXX\nname: Instance group managers should set target_size or be attached to an autoscaler\nprinciple: reliability\nseverity: LOW\nrationale: |\n  google_compute_instance_group_manager / google_compute_region_instance_group_manager\n  default to target_size = 0 when neither target_size nor an attached\n  autoscaler is present, leaving the group (and anything load-balanced\n  across it) with zero backends until someone manually resizes it.\nremediation: |\n  Set target_size explicitly:\n    target_size = var.target_size\n  or attach a google_compute_autoscaler / google_compute_region_autoscaler\n  to the group and leave target_size unset.\nresources:\n  google_compute_region_instance_group_manager:\n    path: target_size\n    not_null: true\n"
+    }
+  ]
+}

@@ -9,8 +9,8 @@ output "network" {
 }
 
 output "subnetwork" {
-  value       = google_compute_subnetwork.default.self_link
-  description = "The self-link of the subnetwork created by this module."
+  value       = { for region, subnet in google_compute_subnetwork.default : region => subnet.self_link }
+  description = "The self-links of the subnetworks created by this module, keyed by region."
 }
 
 output "sa" {
