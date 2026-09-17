@@ -134,3 +134,23 @@ variable "target_size" {
     error_message = "target_size must be greater than 0."
   }
 }
+
+variable "image_family" {
+  type        = string
+  description = "The image family to build instances from. Defaults to debian-12; debian-11 was removed from debian-cloud after it reached end of life."
+  default     = "debian-12"
+  validation {
+    condition     = length(var.image_family) > 0
+    error_message = "image_family must be a non-empty string."
+  }
+}
+
+variable "image_project" {
+  type        = string
+  description = "The project hosting the image family."
+  default     = "debian-cloud"
+  validation {
+    condition     = length(var.image_project) > 0
+    error_message = "image_project must be a non-empty string."
+  }
+}
