@@ -44,7 +44,7 @@ repos:
         name: holden
         description: Scan Terraform for policy violations (locally-installed CLI)
         language: system
-        entry: holden scan . example/examplea
+        entry: holden scan
         pass_filenames: false
         types: [terraform]
         # pre-push, not pre-commit: a system hook resolves holden from $PATH,
