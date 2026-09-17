@@ -42,6 +42,8 @@ No modules.
 | ---- | ----------- | ---- | ------- | :------: |
 | <a name="input_armor_deny_ranges"></a> [armor\_deny\_ranges](#input\_armor\_deny\_ranges) | Source IP ranges that Cloud Armor will deny with HTTP 403. Must contain at least one entry. | `list(string)` | n/a | yes |
 | <a name="input_health_check_path"></a> [health\_check\_path](#input\_health\_check\_path) | The HTTP path used by the regional health check. | `string` | `"/"` | no |
+| <a name="input_image_family"></a> [image\_family](#input\_image\_family) | The image family to build instances from. Defaults to debian-12; debian-11 was removed from debian-cloud after it reached end of life. | `string` | `"debian-12"` | no |
+| <a name="input_image_project"></a> [image\_project](#input\_image\_project) | The project hosting the image family. | `string` | `"debian-cloud"` | no |
 | <a name="input_machine_type"></a> [machine\_type](#input\_machine\_type) | The machine type to use for the instance template. | `string` | `"n1-standard-1"` | no |
 | <a name="input_network"></a> [network](#input\_network) | The network to deploy the resources into. | `string` | n/a | yes |
 | <a name="input_port"></a> [port](#input\_port) | The single TCP port this internal load balancer serves and health-checks on. Referenced consistently by the health check, the MIG's named port, the forwarding rule, and both firewalls -- there is exactly one port for the whole pipeline. | `number` | `80` | no |
@@ -131,7 +133,6 @@ resource "google_project_iam_custom_role" "terraform_pike_plan" {
   permissions = [
     "compute.firewalls.get",
     "compute.forwardingRules.get",
-    "compute.images.get",
     "compute.instanceGroupManagers.get",
     "compute.instanceTemplates.get",
     "compute.networks.get",
